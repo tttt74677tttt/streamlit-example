@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.CarConnect" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/signal</item>
+        <item name="colorPrimaryContainer">@color/signal_dim</item>
+        <item name="colorSecondary">@color/amber</item>
+        <item name="colorOnPrimary">@color/night</item>
+        <item name="colorSurface">@color/night</item>
+        <item name="colorOnSurface">@color/snow</item>
+        <item name="android:statusBarColor">@color/night</item>
+        <item name="android:navigationBarColor">@color/night</item>
+        <item name="android:windowBackground">@color/night</item>
+    </style>
+</resources>

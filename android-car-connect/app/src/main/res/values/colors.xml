@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="night">#0B1220</color>
+    <color name="night_elevated">#121A2B</color>
+    <color name="steel">#1E2A44</color>
+    <color name="mist">#A8B3C7</color>
+    <color name="snow">#F4F7FB</color>
+    <color name="signal">#2FBF8F</color>
+    <color name="signal_dim">#1F8A66</color>
+    <color name="amber">#F0B429</color>
+    <color name="danger">#E35D6A</color>
+</resources>

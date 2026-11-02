@@ -1,38 +1,82 @@
-from collections import namedtuple
-import altair as alt
-import math
-import pandas as pd
 import streamlit as st
 
+st.set_page_config(
+    page_title="AI Box Market Evaluation",
+    page_icon="📦",
+    layout="wide",
+)
+
+st.title("CarPlay AI Box — Market Evaluation")
+st.caption("Hold on custom Android↔CarPlay software. Focus: commercial AI Boxes.")
+
+st.success(
+    "**Yes — AI Boxes support wireless.** "
+    "The box stays plugged into the car’s **wired** CarPlay/AA USB port; "
+    "your **phone** connects **wirelessly** (CarPlay or Android Auto) over Bluetooth + Wi‑Fi."
+)
+
+st.subheader("Wireless model")
+left, right = st.columns(2)
+with left:
+    st.markdown(
+        """
+**Box ↔ car** → wired USB (host)  
+**Phone ↔ box** → **wireless**  
+- iPhone → wireless CarPlay  
+- Android → wireless Android Auto  
+
+After first pairing, phones usually **auto-reconnect** each drive.
 """
-# Welcome to Streamlit!
+    )
+with right:
+    st.code(
+        """
+[Phone]
+   │  Bluetooth (pair) + Wi‑Fi (session)
+   ▼
+[AI Box]  ← Android apps / streaming
+   │  USB wired CarPlay/AA
+   ▼
+[Factory head unit]
+""".strip(),
+        language="text",
+    )
 
-Edit `/streamlit_app.py` to customize this app to your heart's desire :heart:
+st.subheader("Wireless-capable picks")
+st.dataframe(
+    {
+        "Product": [
+            "Carlinkit TBox Ultra",
+            "Carlinkit TBox / Ambient",
+            "Ottocast P3 / P3 Pro",
+            "MMB Max 5.0",
+            "Ottocast i3 / Mekede",
+            "Carlinkit T2C",
+        ],
+        "Wireless phone": [
+            "CP + AA (best recent quality)",
+            "CP + AA",
+            "CP + AA (often softer/laggy)",
+            "CP + AA",
+            "BMW-specific wireless path",
+            "Tesla path (not USB CarPlay host)",
+        ],
+        "Box still needs": [
+            "Wired CP/AA USB",
+            "Wired CP/AA USB",
+            "Wired CP/AA USB",
+            "Wired CP/AA USB",
+            "BMW-compatible host",
+            "Tesla-specific install",
+        ],
+    },
+    hide_index=True,
+    use_container_width=True,
+)
 
-If you have any questions, checkout our [documentation](https://docs.streamlit.io) and [community
-forums](https://discuss.streamlit.io).
+st.warning(
+    "Factory **wireless-only** cars (no wired USB CarPlay/AA host) usually "
+    "**don’t** work with standard AI Boxes — BMW often needs a special SKU."
+)
 
-In the meantime, below is an example of what you can do with just a few lines of code:
-"""
-
-
-with st.echo(code_location='below'):
-    total_points = st.slider("Number of points in spiral", 1, 5000, 2000)
-    num_turns = st.slider("Number of turns in spiral", 1, 100, 9)
-
-    Point = namedtuple('Point', 'x y')
-    data = []
-
-    points_per_turn = total_points / num_turns
-
-    for curr_point_num in range(total_points):
-        curr_turn, i = divmod(curr_point_num, points_per_turn)
-        angle = (curr_turn + 1) * 2 * math.pi * i / points_per_turn
-        radius = curr_point_num / total_points
-        x = radius * math.cos(angle)
-        y = radius * math.sin(angle)
-        data.append(Point(x, y))
-
-    st.altair_chart(alt.Chart(pd.DataFrame(data), height=500, width=500)
-        .mark_circle(color='#0068c9', opacity=0.5)
-        .encode(x='x:Q', y='y:Q'))
+st.info("Details: `docs/AIBOX_MARKET_EVALUATION.md`")
