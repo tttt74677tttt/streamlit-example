@@ -30,10 +30,40 @@ An AI Box is a small Android computer that:
 The car does not learn Android. It still thinks it is talking CarPlay (or AA). The box sits in the middle.
 
 ```
-[Phone] --BT/Wi‑Fi--> [AI Box: Android + apps] --USB CarPlay/AA--> [Factory head unit]
-                              ↑
-                     Netflix, Maps, Play Store, etc.
+[Phone] --BT/Wi‑Fi (wireless)--> [AI Box: Android + apps] --USB (wired host)--> [Factory head unit]
+                                         ↑
+                                Netflix, Maps, Play Store, etc.
 ```
+
+### Wireless support (yes — this is a core feature)
+
+Modern AI Boxes **do support wireless** for the phone:
+
+| Link | Wired or wireless? | Role |
+| --- | --- | --- |
+| **Box ↔ car** | Usually **wired USB** | Box must plug into factory wired CarPlay/AA data port |
+| **Phone ↔ box** | **Wireless** (BT + Wi‑Fi) | iPhone → wireless CarPlay; Android → wireless Android Auto |
+| **Box internet** | Wi‑Fi hotspot / car Wi‑Fi / **SIM** (model-dependent) | Needed for streaming apps on the box |
+
+**How phone wireless pairing works (typical):**
+
+1. Box stays plugged into the car USB (always)  
+2. Phone: Bluetooth + Wi‑Fi **on**  
+3. Pair Bluetooth to box name (`AutoKit-xxxx`, `AUTO-xx`, `AutoSky-xxxx`, …)  
+4. Accept “Use CarPlay” / Android Auto prompt  
+5. Session runs over **Wi‑Fi**; BT is mainly for discovery/reconnect  
+6. After first setup, phone usually **auto-reconnects** each drive  
+
+So: **wireless for the phone, wired for the box.** That is the product.
+
+**Important distinction**
+
+| Situation | Compatible? |
+| --- | --- |
+| Car has **wired** CarPlay/AA; you want wireless phone | **Yes** — standard AI Box |
+| Car has **both** wired + factory wireless | **Yes** — box still uses the wired USB host |
+| Car has **wireless-only** CarPlay (no wired USB host) | **Usually no** for standard boxes; need BMW-specific / special SKUs |
+| Want wireless only (no Android apps on box) | Buy a cheap **wireless adapter**, not a full AI Box |
 
 ### Not the same as…
 
@@ -50,7 +80,7 @@ The car does not learn Android. It still thinks it is talking CarPlay (or AA). T
 
 A standard AI Box works only if:
 
-1. The car (or aftermarket HU) already has **factory wired CarPlay** and/or **wired Android Auto**
+1. The car (or aftermarket HU) already has **factory wired CarPlay** and/or **wired Android Auto** (wireless *phone* support is provided by the box)
 2. The USB port is a **data** port (not charge-only)
 3. Power is enough (many cars need the included **Y-cable** / second power feed)
 
@@ -60,7 +90,7 @@ A standard AI Box works only if:
 - Many **wireless-only** BMW setups → need BMW-specific boxes (e.g. Ottocast i3, Mekede)
 - **Tesla** → different product family (e.g. Carlinkit T2C), not a normal CarPlay USB box
 
-**Pre-buy test:** Plug a phone with a cable. If wired CarPlay/AA starts, a box can usually use that same port.
+**Pre-buy test:** Plug a phone with a cable. If wired CarPlay/AA starts, a box can usually use that same port — then your phone goes wireless to the box.
 
 ---
 
@@ -101,15 +131,22 @@ Firmware / “AutoKit”-style apps matter as much as silicon for wireless CarPl
 | --- | --- | --- | --- |
 | YouTube / Netflix on factory screen | Yes (parked; legal limits apply) | No | No |
 | Full Play Store apps | Yes | No | Limited templates only |
-| Wireless CarPlay for iPhone | Often yes | Factory wired→wireless via box | N/A |
-| Wireless Android Auto for Android phone | Often yes (emulated over CP host on many boxes) | N/A | Factory if supported |
+| **Wireless CarPlay for iPhone** | **Yes** (BT discover → Wi‑Fi session) | Factory wireless if equipped | N/A |
+| **Wireless Android Auto for Android** | **Yes** on most TBox/P3/MMB-class boxes | N/A | Factory wireless if equipped |
+| Auto-reconnect each drive | Usually after 1st pairing | Yes (factory) | Yes (factory) |
 | Independent GPS / SIM | Model-dependent (P3, MMB, etc.) | Phone | Phone |
 | Steering wheel / mic / calls | Usually passthrough; quality varies | Native | Native |
 | Boot time | ~30–60s common | Instant phone session | Instant phone session |
 
+**Wireless quality ranking (review consensus):**
+
+1. **TBox Ultra (6350)** — best overall wireless CP/AA among recent AI Boxes  
+2. Mid 6225 TBox / Ambient — acceptable  
+3. **Ottocast P3 Pro** — polished Android UI, but wireless CP/AA often softer / laggy  
+
 **Known pain points (owner/review consensus):**
 
-- Inconsistent wireless reconnect
+- Inconsistent wireless reconnect (leave phone BT + Wi‑Fi on; prefer 5 GHz hotspot where the box allows)
 - Soft/low-res wireless CP/AA on weaker boxes
 - USB power brownouts → need Y-cable
 - BMW / Tesla special cases
