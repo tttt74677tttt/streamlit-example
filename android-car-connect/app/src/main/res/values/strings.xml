@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Car Connect</string>
+    <string name="hero_title">Car Connect</string>
+    <string name="hero_subtitle">Project your Android apps to a compatible car display with Android Auto.</string>
+    <string name="connect_wired">Connect with USB</string>
+    <string name="connect_wireless">Wireless setup</string>
+    <string name="status_disconnected">Not connected</string>
+    <string name="status_connecting">Looking for car display…</string>
+    <string name="status_connected">Connected to car display</string>
+    <string name="why_android_auto_title">Why Android Auto?</string>
+    <string name="why_android_auto_body">Apple CarPlay only works with iPhone. On Android, the supported path is Android Auto (phone projection) or Android Automotive OS (built into the car).</string>
+    <string name="steps_title">How to connect</string>
+    <string name="step_1">Install Android Auto on your phone (Android 11+).</string>
+    <string name="step_2">Use a quality USB cable, or enable Wireless Android Auto if your car supports it.</string>
+    <string name="step_3">Open this app, then launch Car Connect from the car display.</string>
+    <string name="car_home_title">Nearby places</string>
+    <string name="car_home_loading">Finding places along your route…</string>
+    <string name="place_fuel">Fuel station</string>
+    <string name="place_coffee">Coffee</string>
+    <string name="place_parking">Parking</string>
+    <string name="place_charging">EV charging</string>
+    <string name="place_details_title">Place details</string>
+    <string name="place_navigate">Navigate</string>
+    <string name="place_call">Call</string>
+    <string name="toast_navigate">Navigation would start here</string>
+    <string name="toast_call">Calling is simulated in this demo</string>
+    <string name="sim_connect">Simulate connect</string>
+    <string name="sim_disconnect">Disconnect</string>
+    <string name="note_demo">Demo mode: this phone UI simulates connection state. Real projection uses Android Auto on a compatible head unit.</string>
+</resources>

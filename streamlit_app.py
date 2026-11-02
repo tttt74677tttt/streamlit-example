@@ -1,38 +1,75 @@
-from collections import namedtuple
-import altair as alt
-import math
-import pandas as pd
 import streamlit as st
 
+st.set_page_config(
+    page_title="Car Connect",
+    page_icon="🚗",
+    layout="wide",
+)
+
+st.title("Car Connect")
+st.caption("Android → car display via Android Auto (not Apple CarPlay)")
+
+st.markdown(
+    """
+### Can Android connect to CarPlay?
+
+**No.** Apple CarPlay is proprietary and works only with iPhone.
+On Android, the supported way to use a car's display is **Android Auto**
+(or apps built for **Android Automotive OS** when the car runs Android natively).
+
+This repo includes a starter Android project that does the legitimate thing:
+project a driver-optimized POI experience through the official
+[Android for Cars App Library](https://developer.android.com/training/cars/apps/library).
 """
-# Welcome to Streamlit!
+)
 
-Edit `/streamlit_app.py` to customize this app to your heart's desire :heart:
+left, right = st.columns(2)
 
-If you have any questions, checkout our [documentation](https://docs.streamlit.io) and [community
-forums](https://discuss.streamlit.io).
+with left:
+    st.subheader("Android project")
+    st.markdown(
+        """
+Open `android-car-connect/` in **Android Studio**, then:
 
-In the meantime, below is an example of what you can do with just a few lines of code:
+1. Sync Gradle  
+2. Run on a phone (API 28+)  
+3. Test with the **Desktop Head Unit (DHU)** for Android Auto  
+
+Phone UI covers USB / wireless setup tips and a simulated connection state.
+The car display UI shows nearby places (fuel, coffee, parking, EV charging).
 """
+    )
 
+with right:
+    st.subheader("Architecture")
+    st.code(
+        """
+Phone app (MainActivity)
+        │
+        │  USB / Wireless
+        ▼
+Android Auto host (car / DHU)
+        │
+        ▼
+CarConnectService → Session → Screens
+  • HomeScreen (PlaceListMap)
+  • PlaceDetailScreen
+  • MessageScreen
+""".strip(),
+        language="text",
+    )
 
-with st.echo(code_location='below'):
-    total_points = st.slider("Number of points in spiral", 1, 5000, 2000)
-    num_turns = st.slider("Number of turns in spiral", 1, 100, 9)
+st.subheader("Quick comparison")
+st.dataframe(
+    {
+        "System": ["Apple CarPlay", "Android Auto", "Android Automotive OS"],
+        "Phone": ["iPhone", "Android", "N/A (runs in car)"],
+        "Supported here": ["No", "Yes (demo)", "Possible follow-up"],
+    },
+    hide_index=True,
+    use_container_width=True,
+)
 
-    Point = namedtuple('Point', 'x y')
-    data = []
-
-    points_per_turn = total_points / num_turns
-
-    for curr_point_num in range(total_points):
-        curr_turn, i = divmod(curr_point_num, points_per_turn)
-        angle = (curr_turn + 1) * 2 * math.pi * i / points_per_turn
-        radius = curr_point_num / total_points
-        x = radius * math.cos(angle)
-        y = radius * math.sin(angle)
-        data.append(Point(x, y))
-
-    st.altair_chart(alt.Chart(pd.DataFrame(data), height=500, width=500)
-        .mark_circle(color='#0068c9', opacity=0.5)
-        .encode(x='x:Q', y='y:Q'))
+st.info(
+    "See `android-car-connect/README.md` for build and DHU testing steps."
+)

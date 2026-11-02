@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.streamlit/secrets.toml
+.DS_Store
+android-car-connect/.gradle/
+android-car-connect/local.properties
+android-car-connect/.idea/
+android-car-connect/app/build/
+android-car-connect/build/
