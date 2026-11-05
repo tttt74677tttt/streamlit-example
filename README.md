@@ -1,6 +1,19 @@
-# Welcome to Streamlit!
+# Facebook Save Library
 
-Edit `/streamlit_app.py` to customize this app to your heart's desire. :heart:
+A Streamlit web app for saving Facebook links with offline pictures or videos and organizing them by category.
 
-If you have any questions, checkout our [documentation](https://docs.streamlit.io) and [community
-forums](https://discuss.streamlit.io).
+## Features
+
+- Save a Facebook link with a title and notes.
+- Upload local pictures or videos so the media is available offline.
+- Choose an existing category or create a new one while saving.
+- Search and filter saved items by category.
+- Delete saved items and their stored offline media.
+
+## Run locally
+
+```bash
+streamlit run streamlit_app.py
+```
+
+Saved data is stored under `data/` in this project directory.
