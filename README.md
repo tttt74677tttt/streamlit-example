@@ -68,6 +68,22 @@ streamlit run streamlit_app.py
 
 Saved data is stored under `data/` in this project directory.
 
+## Page previews with Chrome
+
+Items imported without bundled media can get an **offline page preview** captured by headless
+Chrome. The app drives chromedriver through Selenium (resolved automatically by Selenium Manager)
+to render each link and save a screenshot into `data/media/`.
+
+- Capture one item at a time with **Capture preview** on the item, or batch it from the Import tab.
+- Batch capture only targets items that have neither media nor a preview yet.
+- Facebook shows a login wall to signed-out visitors for many posts. Those captures are stored
+  and **labelled as login-walled** rather than presented as if they showed the post.
+- Previews are best-effort: they identify *which* page a link points at, they do not reproduce or
+  download the post's content.
+
+Requirements: Chrome and a matching chromedriver. Selenium Manager downloads the driver on first
+use, so no manual driver install is needed.
+
 ## Tests
 
 ```bash

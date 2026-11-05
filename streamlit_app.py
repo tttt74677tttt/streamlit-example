@@ -15,6 +15,7 @@ from fb_import import (
     parse_bookmarks_html,
     sync_into_library,
 )
+from preview_capture import capture_preview, preview_record, select_capture_targets
 
 APP_DIR = Path(__file__).parent
 DATA_DIR = APP_DIR / "data"
@@ -111,6 +112,48 @@ def attach_media(item_id: str, files) -> int:
             break
     save_items(items)
     return len(new_media)
+
+
+def capture_previews_for(item_ids: list[str], progress=None) -> dict:
+    """Capture a Chrome screenshot preview for each item, saving results back to the library."""
+    items = load_items()
+    by_id = {item["id"]: item for item in items}
+    stats = {"captured": 0, "login_wall": 0, "failed": 0}
+
+    for index, item_id in enumerate(item_ids, start=1):
+        item = by_id.get(item_id)
+        if not item:
+            continue
+        if progress:
+            progress(index, len(item_ids), item.get("title", item_id))
+        result = capture_preview(item["url"], MEDIA_DIR, APP_DIR)
+        item["preview"] = preview_record(result)
+        if result.ok:
+            stats["captured"] += 1
+            if result.login_wall:
+                stats["login_wall"] += 1
+        else:
+            stats["failed"] += 1
+
+    save_items(items)
+    return stats
+
+
+def render_preview(item: dict) -> None:
+    """Show the captured Chrome preview, or explain why there isn't a useful one."""
+    preview = item.get("preview") or {}
+    preview_path = preview.get("path")
+    if preview_path:
+        stored = APP_DIR / preview_path
+        if stored.exists():
+            if preview.get("login_wall"):
+                st.caption("Preview captured — Facebook shows a login wall for this link.")
+            st.image(str(stored), caption="Page preview (captured offline)", use_container_width=True)
+            return
+    if preview.get("error"):
+        st.caption(f"Preview unavailable: {preview['error']}")
+    elif preview.get("login_wall"):
+        st.caption("Facebook requires a login for this link, so no preview was captured.")
 
 
 def render_media(media: dict) -> None:
@@ -221,6 +264,33 @@ def render_import_section(items: list[dict]) -> None:
                     "from Facebook, then attach it on each item."
                 )
                 st.rerun()
+
+    st.divider()
+    st.subheader("Capture page previews with Chrome")
+    st.caption(
+        "Uses headless Chrome (chromedriver) to render each link and save a screenshot, so items "
+        "without bundled media still show something offline. Facebook shows a login wall to "
+        "signed-out visitors for many posts; those captures are marked instead of faked."
+    )
+    pending = select_capture_targets(items, only_missing=True)
+    st.caption(f"{len(pending)} item(s) have no offline media or preview yet.")
+    batch_size = st.slider("Items per batch", 1, 25, 5)
+    if st.button("Capture previews", key="capture-batch", disabled=not pending):
+        progress_bar = st.progress(0.0)
+        status = st.empty()
+
+        def report(done: int, total: int, title: str) -> None:
+            progress_bar.progress(done / total)
+            status.caption(f"[{done}/{total}] {title}")
+
+        with st.spinner("Rendering pages..."):
+            stats = capture_previews_for([item["id"] for item in pending], progress=report)
+        st.success(
+            f"Captured {stats['captured']} preview(s); "
+            f"{stats['login_wall']} hit a Facebook login wall; "
+            f"{stats['failed']} failed."
+        )
+        st.rerun()
 
 
 st.set_page_config(page_title="Facebook Save Library", page_icon="📌", layout="wide")
@@ -336,10 +406,13 @@ with library_tab:
             if item.get("notes"):
                 st.write(item["notes"])
 
-            media_columns = st.columns(min(3, max(1, len(item.get("media", [])))))
-            for index, media in enumerate(item.get("media", [])):
-                with media_columns[index % len(media_columns)]:
-                    render_media(media)
+            if item.get("media"):
+                media_columns = st.columns(min(3, max(1, len(item.get("media", [])))))
+                for index, media in enumerate(item.get("media", [])):
+                    with media_columns[index % len(media_columns)]:
+                        render_media(media)
+            else:
+                render_preview(item)
 
             with st.expander("Add offline pictures or videos"):
                 extra_files = st.file_uploader(
@@ -353,3 +426,8 @@ with library_tab:
                     count = attach_media(item["id"], extra_files)
                     st.success(f"Attached {count} file(s).")
                     st.rerun()
+
+            if st.button("Capture preview", key=f"preview-{item['id']}"):
+                with st.spinner("Rendering page in Chrome..."):
+                    capture_previews_for([item["id"]])
+                st.rerun()
