@@ -6,11 +6,14 @@ from pathlib import Path
 import pytest
 
 from fb_import import (
+    ImportedEntry,
     import_facebook_export,
     is_facebook_url,
     media_kind,
+    normalize_facebook_url,
     parse_bookmarks_html,
     parse_saved_items_json,
+    sync_into_library,
 )
 
 

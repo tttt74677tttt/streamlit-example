@@ -16,10 +16,11 @@ import posixpath
 import uuid
 import zipfile
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Iterable
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlunsplit
 
 FACEBOOK_HOSTS = ("facebook.com", "fb.watch", "fb.com")
 IMAGE_TYPES = {"jpg", "jpeg", "png", "gif", "webp", "heic", "bmp"}
@@ -28,6 +29,53 @@ VIDEO_TYPES = {"mp4", "mov", "m4v", "webm", "avi", "mkv"}
 TIMESTAMP_KEYS = ("timestamp", "creation_timestamp", "add_date", "created_at")
 TITLE_KEYS = ("title", "name")
 URL_KEYS = ("url", "href", "external_context")
+
+# Subdomains that serve the same page as www.facebook.com.
+CANONICAL_HOST_ALIASES = {
+    "m.facebook.com": "www.facebook.com",
+    "mobile.facebook.com": "www.facebook.com",
+    "web.facebook.com": "www.facebook.com",
+    "touch.facebook.com": "www.facebook.com",
+    "free.facebook.com": "www.facebook.com",
+    "facebook.com": "www.facebook.com",
+}
+
+# Tracking/attribution params Facebook appends; they never identify the content itself.
+TRACKING_QUERY_KEYS = {
+    "__cft__",
+    "__tn__",
+    "__xts__",
+    "__xt",
+    "_rdr",
+    "_rdc",
+    "rdid",
+    "rdr",
+    "rdrr",
+    "ref",
+    "refsrc",
+    "refid",
+    "referrer",
+    "mibextid",
+    "mbid",
+    "sfnsn",
+    "eav",
+    "paipv",
+    "hc_ref",
+    "fref",
+    "locale",
+    "acontext",
+    "notif_id",
+    "notif_t",
+    "comment_tracking",
+    "extid",
+    "share_url",
+    "fbclid",
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_content",
+    "utm_term",
+}
 
 
 def is_facebook_url(url: str) -> bool:
@@ -52,6 +100,42 @@ def media_kind(filename: str) -> str:
     return "file"
 
 
+def _is_tracking_key(key: str) -> bool:
+    """True for tracking params, including indexed forms like ``__cft__[0]``."""
+    lowered = key.lower()
+    base = lowered.split("[", 1)[0]
+    return base in TRACKING_QUERY_KEYS or base.startswith("utm_") or lowered.startswith("__")
+
+
+def normalize_facebook_url(url: str) -> str:
+    """Return a stable identity for a Facebook link.
+
+    Two links to the same post differ in subdomain (``m.``/``web.``), trailing slashes,
+    fragment, and dozens of tracking params that Facebook appends on share. Sync compares
+    normalized URLs so a re-import updates an existing entry instead of adding a duplicate.
+    """
+    if not isinstance(url, str):
+        return ""
+    raw = url.strip()
+    if not is_facebook_url(raw):
+        return raw
+    parsed = urlparse(raw)
+    host = parsed.netloc.lower().split(":")[0]
+    host = CANONICAL_HOST_ALIASES.get(host, host)
+    if host.endswith(".fb.com") or host == "fb.com":
+        host = "www.facebook.com"
+
+    kept = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=False)
+        if not _is_tracking_key(key)
+    ]
+    kept.sort()
+    path = parsed.path.rstrip("/") or "/"
+    query = urlencode(kept)
+    return urlunsplit(("https", host, path, query, ""))
+
+
 @dataclass
 class ImportedEntry:
     """One saved Facebook item recovered from an export."""
@@ -68,6 +152,11 @@ class ImportedEntry:
     def needs_media(self) -> bool:
         return not self.media
 
+    @property
+    def url_key(self) -> str:
+        """Normalized identity used to match this entry against the existing library."""
+        return normalize_facebook_url(self.url)
+
 
 @dataclass
 class ImportResult:
@@ -79,6 +168,77 @@ class ImportResult:
     @property
     def with_media(self) -> int:
         return sum(1 for entry in self.entries if entry.media)
+
+
+def sync_into_library(
+    items: list[dict],
+    entries: list[ImportedEntry],
+    fallback_category: str,
+    now: str | None = None,
+) -> tuple[int, int]:
+    """Merge imported entries into ``items`` in place, returning ``(added, updated)``.
+
+    Entries are matched on the normalized Facebook URL, so re-running an import against a newer
+    export behaves like a sync: existing rows are updated rather than duplicated. Import-owned
+    fields (title, category, media) refresh; user-owned fields (notes) are preserved, and media
+    already stored is not re-copied.
+    """
+    stamp = now or datetime.now(timezone.utc).isoformat()
+
+    by_key: dict[str, dict] = {}
+    for item in items:
+        by_key.setdefault(normalize_facebook_url(item.get("url", "")), item)
+
+    added = 0
+    updated = 0
+    for entry in entries:
+        key = entry.url_key
+        existing = by_key.get(key)
+        category = entry.category or fallback_category
+
+        if existing is None:
+            new_item = {
+                "id": uuid.uuid4().hex,
+                "title": entry.title or entry.url,
+                "url": entry.url,
+                "category": category,
+                "notes": "",
+                "media": list(entry.media),
+                "created_at": _created_at_from_timestamp(entry.timestamp),
+                "synced_at": stamp,
+            }
+            items.insert(0, new_item)
+            by_key[key] = new_item
+            added += 1
+            continue
+
+        changed = False
+        if entry.title and entry.title != existing.get("title"):
+            existing["title"] = entry.title
+            changed = True
+        if category and category != existing.get("category"):
+            existing["category"] = category
+            changed = True
+        if entry.media:
+            known = {media.get("original_name") for media in existing.get("media", [])}
+            fresh = [media for media in entry.media if media.get("original_name") not in known]
+            if fresh:
+                existing.setdefault("media", []).extend(fresh)
+                changed = True
+        if changed:
+            updated += 1
+        existing["synced_at"] = stamp
+
+    return added, updated
+
+
+def _created_at_from_timestamp(timestamp: int | None) -> str:
+    if timestamp:
+        try:
+            return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+        except (OverflowError, OSError, ValueError):
+            pass
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _string_title(value: object) -> str | None:
@@ -208,9 +368,12 @@ def parse_saved_items_json(text: str, category: str = "Imported from Facebook") 
     for record in records:
         payload = record.get("attachments") or record.get("external_context") or record
         url = _first_facebook_url(payload) or _first_facebook_url(record)
-        if not url or url in seen:
+        if not url:
             continue
-        seen.add(url)
+        key = normalize_facebook_url(url)
+        if key in seen:
+            continue
+        seen.add(key)
         refs: list[str] = []
         _collect_media_refs(payload, refs)
         entries.append(
@@ -226,16 +389,17 @@ def parse_saved_items_json(text: str, category: str = "Imported from Facebook") 
         urls: list[str] = []
         _fallback_urls(data, urls)
         for url in urls:
-            if url in seen:
+            key = normalize_facebook_url(url)
+            if key in seen:
                 continue
-            seen.add(url)
+            seen.add(key)
             entries.append(ImportedEntry(url=url, title=_title_from_url(url), category=category))
 
     return entries
 
 
 def _collect_collections(node: object, out: dict[str, str], depth: int = 0) -> None:
-    """Map saved-item URL -> collection name when the export carries collections."""
+    """Map normalized saved-item URL -> collection name when the export carries collections."""
     if depth > 12:
         return
     if isinstance(node, dict):
@@ -247,7 +411,7 @@ def _collect_collections(node: object, out: dict[str, str], depth: int = 0) -> N
                     for child in children:
                         url = _first_facebook_url(child)
                         if url:
-                            out.setdefault(url, name)
+                            out.setdefault(normalize_facebook_url(url), name)
         for value in node.values():
             _collect_collections(value, out, depth + 1)
     elif isinstance(node, list):
@@ -307,13 +471,14 @@ def import_facebook_export(zip_bytes: bytes, media_dir: Path, app_dir: Path) -> 
                 pass
             for entry in parse_saved_items_json(text):
                 entry.source_member = member
-                if entry.url in collections:
-                    entry.category = collections[entry.url]
+                collection = collections.get(normalize_facebook_url(entry.url))
+                if collection:
+                    entry.category = collection
                 parsed.append(entry)
 
         deduped: dict[str, ImportedEntry] = {}
         for entry in parsed:
-            deduped.setdefault(entry.url, entry)
+            deduped.setdefault(entry.url_key, entry)
 
         for entry in deduped.values():
             media: list[dict] = []
@@ -410,9 +575,12 @@ def parse_bookmarks_html(html_text: str, default_category: str = "Bookmarks") ->
     entries: list[ImportedEntry] = []
     seen: set[str] = set()
     for href, title, folder, add_date in parser.entries:
-        if not is_facebook_url(href) or href in seen:
+        if not is_facebook_url(href):
             continue
-        seen.add(href)
+        key = normalize_facebook_url(href)
+        if key in seen:
+            continue
+        seen.add(key)
         entries.append(
             ImportedEntry(
                 url=href.strip(),

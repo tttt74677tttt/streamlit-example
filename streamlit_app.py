@@ -13,6 +13,7 @@ from fb_import import (
     is_facebook_url,
     media_kind,
     parse_bookmarks_html,
+    sync_into_library,
 )
 
 APP_DIR = Path(__file__).parent
@@ -69,39 +70,24 @@ def known_categories(items: list[dict]) -> list[str]:
     return sorted(categories)
 
 
-def created_at_from_timestamp(timestamp: int | None) -> str:
-    if timestamp:
-        try:
-            return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
-        except (OverflowError, OSError, ValueError):
-            pass
-    return datetime.now(timezone.utc).isoformat()
-
-
-def merge_entries(items: list[dict], entries: list[ImportedEntry], fallback_category: str) -> int:
-    """Add imported entries, skipping any Facebook URL already in the library."""
-    existing_urls = {item["url"] for item in items}
-    added = 0
-    for entry in entries:
-        if entry.url in existing_urls:
-            continue
-        existing_urls.add(entry.url)
-        items.insert(
-            0,
-            {
-                "id": uuid.uuid4().hex,
-                "title": entry.title or entry.url,
-                "url": entry.url,
-                "category": entry.category or fallback_category,
-                "notes": "",
-                "media": entry.media,
-                "created_at": created_at_from_timestamp(entry.timestamp),
-            },
-        )
-        added += 1
-    if added:
+def merge_entries(items: list[dict], entries: list[ImportedEntry], fallback_category: str) -> tuple[int, int]:
+    """Sync imported entries into the library, returning ``(added, updated)``."""
+    added, updated = sync_into_library(items, entries, fallback_category)
+    if added or updated:
         save_items(items)
-    return added
+    return added, updated
+
+
+def newest_sync(items: list[dict]) -> str | None:
+    stamps = [item["synced_at"] for item in items if item.get("synced_at")]
+    if not stamps:
+        return None
+    latest = max(stamps)
+    try:
+        parsed = datetime.fromisoformat(latest)
+    except ValueError:
+        return latest
+    return parsed.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 
 def delete_item(item_id: str) -> None:
@@ -156,6 +142,15 @@ def render_import_section(items: list[dict]) -> None:
         "include **Saved items and collections** (plus photos and videos if you want media)."
     )
 
+    last_sync = newest_sync(items)
+    if last_sync:
+        st.caption(f"Last sync: {last_sync}")
+    st.info(
+        "Syncing is repeatable. Export from Facebook again later and import the new zip: "
+        "items already in your library are updated in place (title, category, new media) "
+        "instead of being duplicated. Your own notes are kept."
+    )
+
     export_tab, bookmarks_tab = st.tabs(["Facebook data export (.zip)", "Browser bookmarks (.html)"])
 
     with export_tab:
@@ -178,9 +173,13 @@ def render_import_section(items: list[dict]) -> None:
                     "“Saved items and collections” and uses JSON format."
                 )
             else:
-                added = merge_entries(items, result.entries, default_category or "Imported from Facebook")
+                added, updated = merge_entries(
+                    items, result.entries, default_category or "Imported from Facebook"
+                )
                 st.success(
-                    f"Imported {added} new item(s) from {result.json_files_read} saved-items file(s)."
+                    f"Synced {len(result.entries)} saved item(s) from "
+                    f"{result.json_files_read} saved-items file(s): "
+                    f"{added} new, {updated} updated."
                 )
                 st.info(
                     f"{result.media_copied} media file(s) copied offline, "
@@ -213,8 +212,10 @@ def render_import_section(items: list[dict]) -> None:
             if not entries:
                 st.error("No Facebook links found in that bookmarks file.")
             else:
-                added = merge_entries(items, entries, default_folder or "Bookmarks")
-                st.success(f"Imported {added} new bookmark(s).")
+                added, updated = merge_entries(items, entries, default_folder or "Bookmarks")
+                st.success(
+                    f"Synced bookmarks: {added} new, {updated} updated."
+                )
                 st.caption(
                     "Bookmarks carry links and folder names only. Download the media you care about "
                     "from Facebook, then attach it on each item."

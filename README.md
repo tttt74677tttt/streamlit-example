@@ -32,6 +32,23 @@ Some saved posts point at media that Facebook does not bundle in the export. Tho
 import as links and are counted as "missing media" in the import summary; use **Add offline
 pictures or videos** on the item to attach copies you downloaded yourself.
 
+### Re-syncing later (keeping the library current)
+
+Import the same way again whenever you export a fresh copy — there is no login or live
+connection involved, so "sync" here means **re-import the newer export**. The importer matches
+items on a normalized Facebook URL, which means:
+
+- `m.facebook.com` / `web.facebook.com` / `facebook.com` links match their `www` equivalents.
+- Share/tracking params (`__cft__`, `__tn__`, `mibextid`, `fbclid`, `utm_*`, `ref`, …) are ignored,
+  so a link saved from a phone and one saved from desktop collide correctly.
+- Existing entries are **updated in place** (title, category, newly appearing media) instead of
+  duplicated.
+- Your own **notes are preserved**, and media already stored is never re-copied.
+- Each item records a `synced_at` timestamp; the Import tab shows the last sync time.
+
+Items deleted from Facebook are left in your library rather than being removed automatically, so
+a re-import never loses an offline copy you already have.
+
 ### Option 2 — Browser bookmarks
 
 Export bookmarks to HTML from your browser (Chrome/Edge: Bookmark manager → Export bookmarks,
@@ -39,6 +56,9 @@ Firefox: Library → Import and Backup → Export Bookmarks to HTML). Upload tha
 **Browser bookmarks (.html)** sub-tab. Bookmark folders become categories.
 
 Bookmarks carry links only, so attach media manually afterwards.
+
+Re-uploading a newer bookmark export also syncs: links already present are updated (for example a
+renamed folder changes the category) rather than duplicated.
 
 ## Run locally
 
