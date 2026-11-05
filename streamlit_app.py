@@ -3,17 +3,24 @@ import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlparse
 
 import streamlit as st
+
+from fb_import import (
+    IMAGE_TYPES,
+    ImportedEntry,
+    import_facebook_export,
+    is_facebook_url,
+    media_kind,
+    parse_bookmarks_html,
+)
 
 APP_DIR = Path(__file__).parent
 DATA_DIR = APP_DIR / "data"
 MEDIA_DIR = DATA_DIR / "media"
 LIBRARY_FILE = DATA_DIR / "facebook_library.json"
 
-IMAGE_TYPES = {"jpg", "jpeg", "png", "gif", "webp"}
-VIDEO_TYPES = {"mp4", "mov", "m4v", "webm", "avi", "mkv"}
+UPLOAD_TYPES = sorted(IMAGE_TYPES | {"mp4", "mov", "m4v", "webm", "avi", "mkv"})
 
 
 def ensure_storage() -> None:
@@ -38,33 +45,11 @@ def save_items(items: list[dict]) -> None:
         json.dump(items, file, indent=2)
 
 
-def is_facebook_url(url: str) -> bool:
-    parsed = urlparse(url.strip())
-    host = parsed.netloc.lower()
-    return parsed.scheme in {"http", "https"} and (
-        host == "facebook.com"
-        or host.endswith(".facebook.com")
-        or host == "fb.watch"
-        or host.endswith(".fb.watch")
-        or host == "fb.com"
-        or host.endswith(".fb.com")
-    )
-
-
-def media_kind(filename: str) -> str:
-    extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    if extension in IMAGE_TYPES:
-        return "image"
-    if extension in VIDEO_TYPES:
-        return "video"
-    return "file"
-
-
-def save_uploaded_files(files) -> list[dict]:
+def save_uploaded_files(files, prefix: str = "") -> list[dict]:
     saved_files = []
     for uploaded_file in files:
         suffix = Path(uploaded_file.name).suffix.lower()
-        safe_name = f"{uuid.uuid4().hex}{suffix}"
+        safe_name = f"{prefix}{uuid.uuid4().hex}{suffix}"
         destination = MEDIA_DIR / safe_name
         with destination.open("wb") as file:
             shutil.copyfileobj(uploaded_file, file)
@@ -84,6 +69,41 @@ def known_categories(items: list[dict]) -> list[str]:
     return sorted(categories)
 
 
+def created_at_from_timestamp(timestamp: int | None) -> str:
+    if timestamp:
+        try:
+            return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+        except (OverflowError, OSError, ValueError):
+            pass
+    return datetime.now(timezone.utc).isoformat()
+
+
+def merge_entries(items: list[dict], entries: list[ImportedEntry], fallback_category: str) -> int:
+    """Add imported entries, skipping any Facebook URL already in the library."""
+    existing_urls = {item["url"] for item in items}
+    added = 0
+    for entry in entries:
+        if entry.url in existing_urls:
+            continue
+        existing_urls.add(entry.url)
+        items.insert(
+            0,
+            {
+                "id": uuid.uuid4().hex,
+                "title": entry.title or entry.url,
+                "url": entry.url,
+                "category": entry.category or fallback_category,
+                "notes": "",
+                "media": entry.media,
+                "created_at": created_at_from_timestamp(entry.timestamp),
+            },
+        )
+        added += 1
+    if added:
+        save_items(items)
+    return added
+
+
 def delete_item(item_id: str) -> None:
     items = load_items()
     item_to_delete = next((item for item in items if item["id"] == item_id), None)
@@ -94,6 +114,17 @@ def delete_item(item_id: str) -> None:
             if media_path.exists():
                 media_path.unlink()
     save_items(remaining_items)
+
+
+def attach_media(item_id: str, files) -> int:
+    items = load_items()
+    new_media = save_uploaded_files(files, prefix=f"{item_id}-")
+    for item in items:
+        if item["id"] == item_id:
+            item.setdefault("media", []).extend(new_media)
+            break
+    save_items(items)
+    return len(new_media)
 
 
 def render_media(media: dict) -> None:
@@ -117,6 +148,80 @@ def render_media(media: dict) -> None:
         )
 
 
+def render_import_section(items: list[dict]) -> None:
+    st.markdown(
+        "Facebook has no public API for your saved items and this app never signs in to your "
+        "account. Instead, import a file you own: **Settings & privacy → Settings → "
+        "Your Facebook information → Download your information**. Choose **JSON** format and "
+        "include **Saved items and collections** (plus photos and videos if you want media)."
+    )
+
+    export_tab, bookmarks_tab = st.tabs(["Facebook data export (.zip)", "Browser bookmarks (.html)"])
+
+    with export_tab:
+        default_category = st.text_input(
+            "Category for items without a collection",
+            value="Imported from Facebook",
+            key="export-category",
+        )
+        export_zip = st.file_uploader(
+            "Upload the Download Your Information zip",
+            type=["zip"],
+            key="export-zip",
+        )
+        if export_zip is not None and st.button("Import export", type="primary", key="import-export"):
+            with st.spinner("Reading export and copying media..."):
+                result = import_facebook_export(export_zip.getvalue(), MEDIA_DIR, APP_DIR)
+            if not result.entries:
+                st.error(
+                    "No saved items found. Make sure the export includes "
+                    "“Saved items and collections” and uses JSON format."
+                )
+            else:
+                added = merge_entries(items, result.entries, default_category or "Imported from Facebook")
+                st.success(
+                    f"Imported {added} new item(s) from {result.json_files_read} saved-items file(s)."
+                )
+                st.info(
+                    f"{result.media_copied} media file(s) copied offline, "
+                    f"{result.missing_media} reference(s) had no file in the export, "
+                    f"{result.with_media}/{len(result.entries)} item(s) have offline media."
+                )
+                if result.missing_media:
+                    st.caption(
+                        "Media the export does not bundle stays online-only. Use "
+                        "“Add offline pictures or videos” on an item to attach your own copies."
+                    )
+                st.rerun()
+
+    with bookmarks_tab:
+        default_folder = st.text_input(
+            "Category for bookmarks outside a folder",
+            value="Bookmarks",
+            key="bookmarks-category",
+        )
+        bookmarks_html = st.file_uploader(
+            "Upload a bookmarks HTML file (Chrome, Edge, Firefox, Safari)",
+            type=["html", "htm"],
+            key="bookmarks-html",
+        )
+        if bookmarks_html is not None and st.button("Import bookmarks", key="import-bookmarks"):
+            entries = parse_bookmarks_html(
+                bookmarks_html.getvalue().decode("utf-8", "replace"),
+                default_category=default_folder or "Bookmarks",
+            )
+            if not entries:
+                st.error("No Facebook links found in that bookmarks file.")
+            else:
+                added = merge_entries(items, entries, default_folder or "Bookmarks")
+                st.success(f"Imported {added} new bookmark(s).")
+                st.caption(
+                    "Bookmarks carry links and folder names only. Download the media you care about "
+                    "from Facebook, then attach it on each item."
+                )
+                st.rerun()
+
+
 st.set_page_config(page_title="Facebook Save Library", page_icon="📌", layout="wide")
 ensure_storage()
 
@@ -132,98 +237,118 @@ with st.sidebar:
     selected_category = st.selectbox("Category", ["All categories"] + categories)
     st.metric("Saved items", len(items))
     st.metric("Categories", len(categories))
+    offline_items = sum(1 for item in items if item.get("media"))
+    st.metric("With offline media", offline_items)
 
-st.subheader("Add a saved Facebook item")
-with st.form("save-facebook-item", clear_on_submit=True):
-    title = st.text_input("Title", placeholder="Example: Product demo post")
-    facebook_url = st.text_input("Facebook link", placeholder="https://www.facebook.com/...")
+library_tab, import_tab = st.tabs(["Library", "Import from Facebook"])
 
-    category_options = [""] + categories
-    category_choice = st.selectbox("Choose existing category", category_options)
-    new_category = st.text_input("Or create a new category", placeholder="Family, Work, Ideas")
+with import_tab:
+    render_import_section(items)
+    items = load_items()
+    categories = known_categories(items)
 
-    notes = st.text_area("Notes", placeholder="Why did you save this?")
-    uploaded_files = st.file_uploader(
-        "Offline pictures or videos",
-        type=sorted(IMAGE_TYPES | VIDEO_TYPES),
-        accept_multiple_files=True,
-        help="Upload images/videos from your device so the item still has media offline.",
-    )
+with library_tab:
+    st.subheader("Add a saved Facebook item")
+    with st.form("save-facebook-item", clear_on_submit=True):
+        title = st.text_input("Title", placeholder="Example: Product demo post")
+        facebook_url = st.text_input("Facebook link", placeholder="https://www.facebook.com/...")
 
-    submitted = st.form_submit_button("Save item", use_container_width=True)
+        category_choice = st.selectbox("Choose existing category", [""] + categories)
+        new_category = st.text_input("Or create a new category", placeholder="Family, Work, Ideas")
 
-if submitted:
-    normalized_url = facebook_url.strip()
-    category = (new_category or category_choice).strip()
-
-    if not title.strip():
-        st.error("Please add a title.")
-    elif not is_facebook_url(normalized_url):
-        st.error("Please enter a valid Facebook link.")
-    elif not category:
-        st.error("Please choose or create a category.")
-    elif not uploaded_files:
-        st.error("Please upload at least one picture or video for offline use.")
-    else:
-        saved_media = save_uploaded_files(uploaded_files)
-        items.insert(
-            0,
-            {
-                "id": uuid.uuid4().hex,
-                "title": title.strip(),
-                "url": normalized_url,
-                "category": category,
-                "notes": notes.strip(),
-                "media": saved_media,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            },
+        notes = st.text_area("Notes", placeholder="Why did you save this?")
+        uploaded_files = st.file_uploader(
+            "Offline pictures or videos",
+            type=UPLOAD_TYPES,
+            accept_multiple_files=True,
+            help="Upload images/videos from your device so the item still has media offline.",
         )
-        save_items(items)
-        st.success("Saved successfully.")
-        st.rerun()
 
-st.divider()
-st.subheader("Saved library")
+        submitted = st.form_submit_button("Save item", use_container_width=True)
 
-filtered_items = items
-if selected_category != "All categories":
-    filtered_items = [item for item in filtered_items if item["category"] == selected_category]
+    if submitted:
+        normalized_url = facebook_url.strip()
+        category = (new_category or category_choice).strip()
 
-if search:
-    query = search.lower()
-    filtered_items = [
-        item
-        for item in filtered_items
-        if query
-        in " ".join(
-            [
-                item.get("title", ""),
-                item.get("url", ""),
-                item.get("category", ""),
-                item.get("notes", ""),
-            ]
-        ).lower()
-    ]
+        if not title.strip():
+            st.error("Please add a title.")
+        elif not is_facebook_url(normalized_url):
+            st.error("Please enter a valid Facebook link.")
+        elif not category:
+            st.error("Please choose or create a category.")
+        else:
+            items.insert(
+                0,
+                {
+                    "id": uuid.uuid4().hex,
+                    "title": title.strip(),
+                    "url": normalized_url,
+                    "category": category,
+                    "notes": notes.strip(),
+                    "media": save_uploaded_files(uploaded_files or []),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            save_items(items)
+            st.success("Saved successfully.")
+            st.rerun()
 
-if not filtered_items:
-    st.info("No saved items match the current filters.")
+    st.divider()
+    st.subheader("Saved library")
 
-for item in filtered_items:
-    with st.container(border=True):
-        header_col, action_col = st.columns([4, 1])
-        with header_col:
-            st.markdown(f"### {item['title']}")
-            st.markdown(f"[Open Facebook link]({item['url']})")
-            st.caption(f"Category: {item['category']}")
-        with action_col:
-            if st.button("Delete", key=f"delete-{item['id']}", use_container_width=True):
-                delete_item(item["id"])
-                st.rerun()
+    filtered_items = items
+    if selected_category != "All categories":
+        filtered_items = [item for item in filtered_items if item["category"] == selected_category]
 
-        if item.get("notes"):
-            st.write(item["notes"])
+    if search:
+        query = search.lower()
+        filtered_items = [
+            item
+            for item in filtered_items
+            if query
+            in " ".join(
+                [
+                    item.get("title", ""),
+                    item.get("url", ""),
+                    item.get("category", ""),
+                    item.get("notes", ""),
+                ]
+            ).lower()
+        ]
 
-        media_columns = st.columns(min(3, max(1, len(item.get("media", [])))))
-        for index, media in enumerate(item.get("media", [])):
-            with media_columns[index % len(media_columns)]:
-                render_media(media)
+    if not filtered_items:
+        st.info("No saved items match the current filters.")
+
+    for item in filtered_items:
+        with st.container(border=True):
+            header_col, action_col = st.columns([4, 1])
+            with header_col:
+                st.markdown(f"### {item['title']}")
+                st.markdown(f"[Open Facebook link]({item['url']})")
+                media_count = len(item.get("media", []))
+                st.caption(f"Category: {item['category']} · Offline files: {media_count}")
+            with action_col:
+                if st.button("Delete", key=f"delete-{item['id']}", use_container_width=True):
+                    delete_item(item["id"])
+                    st.rerun()
+
+            if item.get("notes"):
+                st.write(item["notes"])
+
+            media_columns = st.columns(min(3, max(1, len(item.get("media", [])))))
+            for index, media in enumerate(item.get("media", [])):
+                with media_columns[index % len(media_columns)]:
+                    render_media(media)
+
+            with st.expander("Add offline pictures or videos"):
+                extra_files = st.file_uploader(
+                    "Attach files to this item",
+                    type=UPLOAD_TYPES,
+                    accept_multiple_files=True,
+                    key=f"attach-{item['id']}",
+                    label_visibility="collapsed",
+                )
+                if extra_files and st.button("Attach", key=f"attach-btn-{item['id']}"):
+                    count = attach_media(item["id"], extra_files)
+                    st.success(f"Attached {count} file(s).")
+                    st.rerun()
