@@ -1,6 +1,91 @@
-# Welcome to Streamlit!
+# Facebook Save Library
 
-Edit `/streamlit_app.py` to customize this app to your heart's desire. :heart:
+A Streamlit web app for saving Facebook links with offline pictures or videos and organizing them by category.
 
-If you have any questions, checkout our [documentation](https://docs.streamlit.io) and [community
-forums](https://discuss.streamlit.io).
+## Features
+
+- Save a Facebook link with a title and notes.
+- Upload local pictures or videos so the media is available offline.
+- Choose an existing category or create a new one while saving.
+- Search and filter saved items by category.
+- Delete saved items and their stored offline media.
+- Attach extra offline media to an existing item at any time.
+
+## Importing your saved Facebook content
+
+Facebook has no public API for a user's saved items, and this app never signs in to a
+Facebook account. Instead it imports files you own and export yourself.
+
+### Option 1 — Facebook "Download Your Information" (recommended)
+
+1. In Facebook: **Settings & privacy → Settings → Your Facebook information → Download your information**.
+2. Select **JSON** as the format.
+3. Include **Saved items and collections**, and the photos/videos you want kept offline.
+4. Request the download, wait for Facebook's notification, then download the `.zip`.
+5. In the app open the **Import from Facebook** tab, upload the `.zip`, and click **Import export**.
+
+Saved items become library entries. Their categories come from your Facebook collections when the
+export includes them. Media files bundled in the export are copied into `data/media/` so they
+render offline.
+
+Some saved posts point at media that Facebook does not bundle in the export. Those entries still
+import as links and are counted as "missing media" in the import summary; use **Add offline
+pictures or videos** on the item to attach copies you downloaded yourself.
+
+### Re-syncing later (keeping the library current)
+
+Import the same way again whenever you export a fresh copy — there is no login or live
+connection involved, so "sync" here means **re-import the newer export**. The importer matches
+items on a normalized Facebook URL, which means:
+
+- `m.facebook.com` / `web.facebook.com` / `facebook.com` links match their `www` equivalents.
+- Share/tracking params (`__cft__`, `__tn__`, `mibextid`, `fbclid`, `utm_*`, `ref`, …) are ignored,
+  so a link saved from a phone and one saved from desktop collide correctly.
+- Existing entries are **updated in place** (title, category, newly appearing media) instead of
+  duplicated.
+- Your own **notes are preserved**, and media already stored is never re-copied.
+- Each item records a `synced_at` timestamp; the Import tab shows the last sync time.
+
+Items deleted from Facebook are left in your library rather than being removed automatically, so
+a re-import never loses an offline copy you already have.
+
+### Option 2 — Browser bookmarks
+
+Export bookmarks to HTML from your browser (Chrome/Edge: Bookmark manager → Export bookmarks,
+Firefox: Library → Import and Backup → Export Bookmarks to HTML). Upload that `.html` in the
+**Browser bookmarks (.html)** sub-tab. Bookmark folders become categories.
+
+Bookmarks carry links only, so attach media manually afterwards.
+
+Re-uploading a newer bookmark export also syncs: links already present are updated (for example a
+renamed folder changes the category) rather than duplicated.
+
+## Run locally
+
+```bash
+streamlit run streamlit_app.py
+```
+
+Saved data is stored under `data/` in this project directory.
+
+## Page previews with Chrome
+
+Items imported without bundled media can get an **offline page preview** captured by headless
+Chrome. The app drives chromedriver through Selenium (resolved automatically by Selenium Manager)
+to render each link and save a screenshot into `data/media/`.
+
+- Capture one item at a time with **Capture preview** on the item, or batch it from the Import tab.
+- Batch capture only targets items that have neither media nor a preview yet.
+- Facebook shows a login wall to signed-out visitors for many posts. Those captures are stored
+  and **labelled as login-walled** rather than presented as if they showed the post.
+- Previews are best-effort: they identify *which* page a link points at, they do not reproduce or
+  download the post's content.
+
+Requirements: Chrome and a matching chromedriver. Selenium Manager downloads the driver on first
+use, so no manual driver install is needed.
+
+## Tests
+
+```bash
+python3 -m pytest tests -q
+```
